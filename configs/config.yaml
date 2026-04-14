@@ -1,0 +1,8 @@
+server:
+  port: 50051
+  max_workers: 10
+
+model:
+  name: "Falconsai/nsfw_image_detection"
+  threshold: 0.75
+  
