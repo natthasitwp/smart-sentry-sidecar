@@ -1,66 +1,126 @@
-# Smart Sentry: AI Inference Sidecar (Python)
+# Smart Sentry Sidecar (Python)
 
-This service acts as the high-performance "brain" of the Smart Sentry system. It is a dedicated gRPC server designed to ingest image streams from the Go Gateway and perform real-time content classification using Deep Learning.
+Python gRPC sidecar for image NSFW classification using Hugging Face model
+`Falconsai/nsfw_image_detection`.
 
-## 🧠 Role in Architecture
-The sidecar exists to isolate heavy computational tasks from the main API. By running in a separate process (or container), it ensures that 100% GPU/CPU utilization during a scan does not lead to dropped connections or timeouts in the user-facing Go service.
+## What This Service Does
 
-## 🛠 Features
-* **gRPC Server:** Implementation of the `Scanner` service defined in `smartsentry.proto`.
-* **Model Warm-up:** AI models (MobileNetV3/YOLOv10) are loaded into memory at startup to eliminate cold-start latency.
-* **Stream Reconstruction:** Efficiently reassembles 32KB chunks into a contiguous byte array for processing.
-* **Tensor Optimization:** Utilizes **ONNX Runtime** or **TorchScript** for faster inference compared to standard Python execution.
+- Exposes a unary gRPC endpoint: `NSFWClassifier/ClassifyImage`
+- Accepts raw image bytes (`image_data`) and optional extension (`file_ext`)
+- Runs inference with `transformers` + `torch`
+- Returns:
+  - `isnsfw` (bool)
+  - `confidence` (float, NSFW class probability)
+  - `is_allowed` (bool, opposite of `isnsfw`)
 
-## 📋 Technical Requirements
-* Python 3.10+
-* `grpcio` & `grpcio-tools`
-* `Pillow` (PIL) or `OpenCV`
-* `torch` or `onnxruntime`
+## Project Structure
 
-## 🚀 Quick Start
+- `src/server.py` - gRPC server bootstrap
+- `src/model/classifier.py` - NSFW model loading + inference handler
+- `src/config/loader.py` - YAML configuration loader/validator
+- `configs/config.yaml` - default runtime configuration
+- `protos/classifier.proto` - protobuf service/messages
+- `src/generated/` - generated gRPC Python stubs
+- `tests/client.py` - test client for two sample images in `inputs/`
 
-### 1. Install Dependencies
+## Requirements
+
+- Python `>=3.11`
+- Dependencies are declared in `pyproject.toml`:
+  - `grpcio`
+  - `grpcio-tools`
+  - `pillow`
+  - `pyyaml`
+  - `torch`
+  - `torchvision`
+  - `transformers`
+
+## Install
+
+Using `uv` (recommended):
+
 ```bash
-pip install grpcio grpcio-tools torch torchvision pillow
+uv sync
 ```
 
-### 2. Generate gRPC Stubs
-Run this from the `sidecar/` directory:
+Or with `pip`:
+
 ```bash
-python -m grpc_tools.protoc -I../proto --python_out=. --grpc_python_out=. ../proto/smartsentry.proto
+pip install -e .
 ```
 
-### 3. Run the Server
+## Configuration
+
+By default, the service reads `configs/config.yaml`.
+
+Example:
+
+```yaml
+server:
+  port: 50051
+  max_workers: 10
+
+model:
+  name: "Falconsai/nsfw_image_detection"
+  threshold: 0.75
+```
+
+You can override config path with environment variable:
+
 ```bash
-python main.py
+export SMART_SENTRY_CONFIG=/path/to/config.yaml
 ```
 
-## 🛠 Implementation Details
+Validation rules:
 
-### Stream Handling
-The server implements the `ScanImage` RPC by iterating over the `request_iterator`. This allows the model to begin preparation as soon as the first packet arrives.
-```python
-def ScanImage(self, request_iterator, context):
-    data = bytearray()
-    for chunk in request_iterator:
-        data.extend(chunk.data)
-    
-    # Process the completed byte array
-    result = self.model.predict(data)
-    return smartsentry_pb2.ScanResponse(is_safe=result.is_safe, ...)
+- `server.port > 0`
+- `server.max_workers > 0`
+- `0.0 <= model.threshold <= 1.0`
+
+## Run Server
+
+From project root:
+
+```bash
+python src/server.py
 ```
 
-### Environment Variables
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `GRPC_PORT` | The port the sidecar listens on | `50051` |
-| `MODEL_PATH` | Path to the weights file (.pth / .onnx) | `./models/weights.onnx` |
-| `CONFIDENCE_THRESHOLD` | Sensitivity of the AI scan | `0.75` |
+The server starts on configured port and prints startup logs.
 
-## 🐳 Dockerization
-The sidecar is packaged using a specialized image to support hardware acceleration:
-* **CPU:** `python:3.10-slim`
-* **GPU:** `nvidia/cuda:12.1.0-base-ubuntu22.04` (with Python installed)
+## gRPC API
 
----
-**Develop By:** Natthasit Wongprang
+Defined in `protos/classifier.proto`:
+
+- Service: `nsfw_filter.NSFWClassifier`
+- RPC: `ClassifyImage(ImageRequest) returns (ClassificationResponse)`
+
+Messages:
+
+- `ImageRequest`
+  - `bytes image_data`
+  - `string file_ext`
+- `ClassificationResponse`
+  - `bool isnsfw`
+  - `float confidence`
+  - `bool is_allowed`
+
+## Test With Sample Images
+
+Make sure server is running, then execute:
+
+```bash
+python tests/client.py
+```
+
+Optional target:
+
+```bash
+python tests/client.py --target localhost:50051
+```
+
+The script sends:
+
+- `inputs/sfw-sample.jpeg`
+- `inputs/nsfw-sample.jpeg`
+
+and prints classification results for each image.
