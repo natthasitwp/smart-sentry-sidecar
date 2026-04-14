@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package nsfw_filter;
+
+service NSFWClassifier {
+  // รับรูปภาพไปตรวจสอบ
+  rpc ClassifyImage (ImageRequest) returns (ClassificationResponse) {}
+}
+
+message ImageRequest {
+  bytes image_data = 1; // ส่งรูปเป็น binary bytes
+  string file_ext = 2;  // เช่น "jpg", "png"
+}
+
+message ClassificationResponse {
+  bool isnsfw = 1;     // เช่น 0:"non-nsfw", 1:"nsfw"
+  float confidence = 2; // ค่าความมั่นใจ 0.0 - 1.0
+  bool is_allowed = 3;  // สรุปว่าผ่าน middleware ได้ไหม
+}

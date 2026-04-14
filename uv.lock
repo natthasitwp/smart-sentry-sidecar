@@ -639,7 +639,7 @@ wheels = [
 ]
 
 [[package]]
-name = "smartsentry"
+name = "smart-sentry-sidecar"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
