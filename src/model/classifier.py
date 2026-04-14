@@ -23,7 +23,13 @@ class NSFWClassifier(nsfw_pb2_grpc.NSFWClassifierServicer):
         print(f"Initializing NSFWClassifier with model={model_name}", flush=True)
         self.model = AutoModelForImageClassification.from_pretrained(model_name)
         self.processor = ViTImageProcessor.from_pretrained(model_name)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        elif torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        print(f"Using device={self.device}", flush=True)
         self.threshold = threshold
         self.model.to(self.device)
         self.model.eval()

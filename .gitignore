@@ -9,3 +9,4 @@ inputs/
 
 # Virtual environments
 .venv
+*.bin
